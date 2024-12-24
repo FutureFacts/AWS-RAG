@@ -1,3 +1,0 @@
-txt
-.asd
-as
