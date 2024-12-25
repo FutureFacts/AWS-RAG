@@ -6,3 +6,4 @@ lancedb # Local vector database for storing document embeddings.
 langchain-aws # AWS-related integrations for Langchain.
 langchain-community # Additional community-based integrations for Langchain.
 python-docx # library extracts, and processes DOCX files.
+faiss-cpu
