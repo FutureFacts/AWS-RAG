@@ -1,0 +1,18 @@
+[tool.poetry]
+name = "aws-rag"
+version = "0.1.0"
+description = "\"Internship project to build an AWS RAG system.\""
+authors = ["\"TODO\""] # TODO Add your own email addresses
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.13"
+streamlit = "^1.41.1"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.0.1"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
