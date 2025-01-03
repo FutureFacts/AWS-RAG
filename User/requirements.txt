@@ -1,0 +1,6 @@
+streamlit
+langchain
+boto3
+pyarrow
+langchain-community
+faiss-cpu
