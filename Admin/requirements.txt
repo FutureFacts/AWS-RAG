@@ -1,8 +1,0 @@
-streamlit #For creating the web-based user interface.
-pypdf  #For parsing and loading PDF files.
-langchain #For document loading, text splitting, and integration with vector databases.
-boto3 #For interacting with AWS services (S3, Bedrock, etc.).
-lancedb # Local vector database for storing document embeddings.
-langchain-aws # AWS-related integrations for Langchain.
-langchain-community # Additional community-based integrations for Langchain.
-python-docx # library extracts, and processes DOCX files.

@@ -3,22 +3,29 @@ import tempfile
 import uuid
 import json
 import boto3
+import faiss
+import numpy as np
 import streamlit as st
-import lancedb
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import PyPDFLoader, CSVLoader
 from langchain_community.embeddings import BedrockEmbeddings
 from docx import Document
+import warnings
+from dotenv import load_dotenv
+
+load_dotenv()
+BUCKET_NAME = os.getenv('BUCKET_NAME')
+
+# Suppress Streamlit warnings about missing ScriptRunContext
+warnings.filterwarnings("ignore", message="missing ScriptRunContext")
 
 # AWS Configuration (REPLACE WITH YOUR VALUES)
 s3_client = boto3.client("s3", region_name="eu-central-1")
 BUCKET_NAME = os.getenv("BUCKET_NAME")
 
-# LanceDB Setup
-lancedb_base_path = "/tmp/lancedb"  # Or your preferred path
-os.makedirs(lancedb_base_path, exist_ok=True)
-lancedb_path = os.path.join(lancedb_base_path, "lancedb")
-os.makedirs(lancedb_path, exist_ok=True)
+# FAISS Setup
+faiss_index_file = "/tmp/faiss_index"
+embedding_dimension = 1024  # Adjusted for model compatibility
 
 # Bedrock Embeddings (REPLACE WITH YOUR VALUES)
 bedrock_client = boto3.client(service_name="bedrock-runtime", region_name="eu-central-1")
@@ -34,50 +41,50 @@ def split_text(content, chunk_size, chunk_overlap):
     return text_splitter.split_text(content)
 
 
-def create_vector_store(request_id, documents, bedrock_embeddings):
+def create_faiss_index(request_id, documents, bedrock_embeddings):
     try:
-        # Generate embeddings for each document
+        st.info("Generating embeddings for documents...")
         embeddings_data = []
-        for doc in documents:
-            embedding = bedrock_embeddings.embed_query(doc)
-            embeddings_data.append({"id": get_unique_id(), "page_content": doc, "embedding": embedding})
 
-        # Store all data in a single table
-        table_name = "vector_store"
-        db = lancedb.connect(lancedb_path)
+        for i, doc in enumerate(documents):
+            try:
+                embedding = bedrock_embeddings.embed_query(doc)
+                embedding_np = np.array(embedding).astype(np.float32)
+                if embedding_np.shape[0] != embedding_dimension:
+                    st.warning(f"Skipping document {i + 1}: Embedding dimension mismatch (expected {embedding_dimension}, got {embedding_np.shape[0]})")
+                    continue
+                embeddings_data.append(embedding_np)
+            except Exception as e:
+                st.error(f"Error generating embedding for document {i + 1}: {e}")
+                continue
 
-        # Check if the table already exists
-        if table_name in db.table_names():
-            table = db.open_table(table_name)
-            table.add(embeddings_data)  # Append new data to the existing table
-        else:
-            db.create_table(table_name, embeddings_data)  # Create a new table
-
-        # Verify the table exists
-        table_file_path = os.path.join(lancedb_path, f"{table_name}.lance")
-        if not os.path.exists(table_file_path):
-            st.error(f"Vector store table file does not exist: {table_file_path}")
+        if not embeddings_data:
+            st.error("No valid embeddings generated. Cannot create FAISS index.")
             return False
 
-        # Upload LanceDB files to S3 without compression
-        for root, dirs, files in os.walk(lancedb_path):
-            for file in files:
-                file_path = os.path.join(root, file)
-                s3_key = f"{request_id}/{os.path.relpath(file_path, lancedb_path)}"
-                try:
-                    with open(file_path, 'rb') as f:
-                        s3_client.upload_fileobj(f, BUCKET_NAME, s3_key)
-                    st.write(f"Uploaded: s3://{BUCKET_NAME}/{s3_key}")
-                except Exception as s3_e:
-                    st.error(f"Error uploading file {file} to S3: {s3_e}")
-                    return False
+        embeddings_np = np.vstack(embeddings_data).astype(np.float32)
 
-        st.success("Data stored in LanceDB and uploaded to S3 successfully.")
+        st.info("Initializing FAISS index...")
+        index = faiss.IndexFlatL2(embedding_dimension)
+        index.add(embeddings_np)
+
+        faiss.write_index(index, faiss_index_file)
+
+        try:
+            s3_key = f"{request_id}/faiss_index.index"
+            with open(faiss_index_file, "rb") as f:
+                s3_client.upload_fileobj(f, BUCKET_NAME, s3_key)
+            st.success(f"FAISS index uploaded: s3://{BUCKET_NAME}/{s3_key}")
+        except Exception as s3_e:
+            st.error(f"Error uploading FAISS index to S3: {s3_e}")
+            return False
+
+        st.success("FAISS index created and uploaded to S3 successfully.")
         return True
 
     except Exception as e:
         import traceback
-        st.error(f"Error creating LanceDB vector store: {e}")
+        st.error(f"Error creating FAISS index: {e}")
         traceback.print_exc()
         return False
 
@@ -89,6 +96,7 @@ def read_docx(file_path):
 
 def main():
     st.title("Admin Site for Chat with Files")
+    st.write("Streamlit app is running!")  # Debug message
 
     uploaded_file = st.file_uploader("Choose a file", type=["pdf", "txt", "json", "docx", "csv"], key="file_uploader_1")
 
@@ -126,9 +134,9 @@ def main():
                 if splitted_docs:
                     st.write(splitted_docs[:2])
 
-                    st.info("Creating the Vector Store...")
-                    if create_vector_store(request_id, splitted_docs, bedrock_embeddings):
-                        st.success("File processed and vector store created successfully.")
+                    st.info("Creating the FAISS Index...")
+                    if create_faiss_index(request_id, splitted_docs, bedrock_embeddings):
+                        st.success("File processed and FAISS index created successfully.")
                     else:
                         st.error("Failed to process file.")
                 else:
