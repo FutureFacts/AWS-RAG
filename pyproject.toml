@@ -8,10 +8,17 @@ readme = "README.md"
 [tool.poetry.dependencies]
 python = "^3.13"
 streamlit = "^1.41.1"
+pypdf = "^5.1.0"
+langchain = "^0.3.13"
+boto3 = "^1.35.91"
+langchain-aws = "^0.2.10"
+langchain-community = "^0.3.13"
+python-docx = "^1.1.2"
+faiss-cpu = "^1.9.0.post1"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.0.1"
-
+ruff = "^0.8.5"
 
 [build-system]
 requires = ["poetry-core"]
